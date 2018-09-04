@@ -16,6 +16,8 @@
         password = "";
         staySignedIn = true;
         signInSuccessful = false;
+        showResendConfirmEmail = false;
+        sendConfirmationEmailState: "none" | "sending" | "sent" = "none";
 
         constructor(
             private accountApi: AccountService,
@@ -63,6 +65,7 @@
                 this.showPasswordError = true;
                 // tslint:disable-next-line:max-line-length
                 this.passwordError = "Please check your email. We've sent you an email with a link to confirm your account.";
+                this.showResendConfirmEmail = true;
             } else if (result.status === SignInStatus.Failure) {
                 this.showPasswordError = true;
                 this.passwordError = "Incorrect password";
@@ -76,6 +79,12 @@
         passwordChanged() {
             this.showPasswordError = false;
             this.passwordError = "";
+        }
+
+        sendConfirmationEmail() {
+            this.sendConfirmationEmailState = "sending";
+            this.accountApi.resendConfirmationEmail(this.email)
+                .then(() => this.sendConfirmationEmailState = "sent");
         }
     }
 
