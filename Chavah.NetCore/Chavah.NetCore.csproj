@@ -27,7 +27,7 @@
 		<PackageReference Include="cloudscribe.Syndication.Web" Version="2.1.2" />
 		<PackageReference Include="CoreFtp" Version="1.4.0" />
 		<PackageReference Include="DalSoft.Hosting.BackgroundQueue" Version="1.0.4" />
-		<PackageReference Include="Microsoft.AspNetCore.App" Version="2.1.5" />
+		<PackageReference Include="Microsoft.AspNetCore.App" Version="2.1.6" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning.ApiExplorer" Version="2.2.0" />
 		<PackageReference Include="Microsoft.AspNetCore.ResponseCompression" Version="2.1.1" />
 		<PackageReference Include="Microsoft.Extensions.PlatformAbstractions" Version="1.1.0" />
