@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoMapper;
@@ -9,6 +11,7 @@ using BitShuva.Services;
 using cloudscribe.Syndication.Models.Rss;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -22,6 +25,8 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Pwned.AspNetCore;
+using Quartz.Spi;
+using Raven.DependencyInjection;
 using Raven.Identity;
 using Raven.Migrations;
 using Raven.StructuredLog;
@@ -45,18 +50,27 @@ namespace BitShuva.Chavah
         {
             services.AddOptions();
             services.Configure<AppSettings>(Configuration);
+            services.Configure<RavenSettings>(Configuration.GetSection("RavenSettings")); // Needed for Raven.DependencyInjection
+
+            var hcBuilder = services.AddHealthChecks();
+
+            hcBuilder.AddRavenDbCheck(tags: new string[] {"database"});
+
+            hcBuilder.AddMemoryHealthCheck(tags: new string[] { "memory" });
+
 
             // Add application services.
             services.AddTransient<IEmailService, SendGridEmailService>();
+            services.AddTransient<IPushNotificationSender, PushNotificationSender>();
             services.AddTransient<ICdnManagerService, CdnManagerService>();
             services.AddScoped<IChannelProvider, RssChannelProvider>();
             services.AddTransient<ISongService, SongService>();
             services.AddTransient<ISongUploadService, SongUploadService>();
             services.AddTransient<IAlbumService, AlbumService>();
             services.AddTransient<IUserService, UserService>();
+            services.AddTransient<EmailRetryJob>();
 
             services.AddBackgroundQueueWithLogging(1, TimeSpan.FromSeconds(5));
-            services.AddEmailRetryService();
             services.AddCacheBustedAngularViews("/views");
 
             // Use our BCrypt for password hashing. Must be added before AddIdentity().
@@ -65,32 +79,31 @@ namespace BitShuva.Chavah
 
             // Add RavenDB and identity.
             services
-                .AddRavenDocStore() // Create a RavenDB DocumentStore singleton.
-                .AddRavenDbAsyncSession() // Create a RavenDB IAsyncDocumentSession for each request.
-                .AddRavenDbIdentity<AppUser>(c => // Use Raven for users and roles. 
+                .AddRavenDbDocStore()       // Create a RavenDB DocumentStore singleton.
+                .AddRavenDbAsyncSession()   // Create a RavenDB IAsyncDocumentSession for each request.
+                .AddRavenDbMigrations()     // Use RavenDB migrations
+                .AddRavenDbIdentity<AppUser>(c => // Use Raven for users and roles.
                 {
                     c.Password.RequireNonAlphanumeric = false;
                     c.Password.RequireUppercase = false;
                     c.Password.RequiredLength = 6;
-                })
-                .AddLogging(logger => logger.AddRavenStructuredLogger())
-                .AddRavenDbMigrations(); // Add the migrations
+                });
+
+            services.AddLogging(logger => logger.AddRavenStructuredLogger());
 
             services.InstallIndexes();
             services.AddMemoryCache();
 
-            services.AddMvcCore().AddVersionedApiExplorer(
-              options =>
-              {
-                  options.GroupNameFormat = "'v'VVV";
+            services.AddApiVersioning(v =>
+            {
+                v.ReportApiVersions = true;
+                v.AssumeDefaultVersionWhenUnspecified = true;
+            });
 
-                   // note: this option is only necessary when versioning by url segment. the SubstitutionFormat
-                   // can also be used to control the format of the API version in route templates
-                   options.SubstituteApiVersionInUrl = true;
-              });
+            services.AddVersionedApiExplorer();
 
             services.AddMvc(c => c.Conventions.Add(new ApiExplorerIgnores()))
-                .SetCompatibilityVersion(CompatibilityVersion.Version_2_1)
+                .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
                 .AddJsonOptions(options=>
                 {
                     options.SerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
@@ -114,13 +127,17 @@ namespace BitShuva.Chavah
                     new HeaderApiVersionReader("api-version", "api-v")
                     );
             });
+
             services.AddCustomAddSwagger();
+
             services.AddPwnedPassword(_=> new PwnedOptions());
+
             services.Configure<SecurityStampValidatorOptions>(options =>
             {
                 // enables immediate logout, after updating the user's stat.
                 options.ValidationInterval = TimeSpan.Zero;
             });
+
             services.AddAuthentication(options=>
             {
                 options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -133,23 +150,32 @@ namespace BitShuva.Chavah
                     return Task.CompletedTask;
                 };
             });
-            services.AddHttpsRedirection(options => options.RedirectStatusCode = StatusCodes.Status308PermanentRedirect );
+
+            services.AddHttpsRedirection(options => options.RedirectStatusCode = StatusCodes.Status308PermanentRedirect);
             services.AddAuthorization(options => options.AddPolicy(Policies.Administrator, policy => policy.RequireRole(AppUser.AdminRole)));
 
             // Enable GZip and Brotli compression.
-            services.Configure<GzipCompressionProviderOptions>(options => options.Level = System.IO.Compression.CompressionLevel.Optimal);
+            services.Configure<GzipCompressionProviderOptions>(options =>
+            {
+                options.Level = CompressionLevel.Fastest;
+            });
+            services.Configure<BrotliCompressionProviderOptions>(options =>
+            {
+                options.Level = CompressionLevel.Fastest;
+            });
+
             services.AddResponseCompression(options =>
             {
                 options.EnableForHttps = true;
                 options.Providers.Add<BrotliCompressionProvider>();
+                options.Providers.Add<GzipCompressionProvider>();
             });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(
-            IApplicationBuilder app, 
+            IApplicationBuilder app,
             IHostingEnvironment env,
-            ILoggerFactory loggerFactory,
             IApiVersionDescriptionProvider provider)
         {
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
@@ -184,17 +210,21 @@ namespace BitShuva.Chavah
                 });
             }
 
+            app.UseHealthChecks("/healthy", new HealthCheckOptions
+            {
+                ResponseWriter = HealthCheckBuilderExtensions.WriteResponse
+            });
+
             app.UseHttpsRedirection();
             app.UseAuthentication();
-            
+
             app.UseMvc(routes =>
             {
                 routes.MapRoute(
                     name: "default",
                     template: "{controller=Home}/{action=Index}/{id?}");
-                
             });
-            
+
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
@@ -205,6 +235,9 @@ namespace BitShuva.Chavah
                         description.GroupName.ToUpperInvariant());
                 }
             });
+
+            // Use our EmailRetryService
+            app.UseQuartzForEmailRetry();
 
             // Run pending Raven migrations.
             var migrationService = app.ApplicationServices.GetService<MigrationRunner>();

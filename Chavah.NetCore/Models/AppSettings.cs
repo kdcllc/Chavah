@@ -1,25 +1,17 @@
-﻿namespace BitShuva.Chavah.Models
+﻿using Raven.DependencyInjection;
+
+namespace BitShuva.Chavah.Models
 {
 
     public class AppSettings
     {
-        public DbConnection DbConnection { get; set; }
+        public RavenSettings DbConnection { get; set; }
         public Application Application { get; set; }
         public Logging Logging { get; set; }
         public EmailSettings Email { get; set; }
         public Cdn Cdn { get; set; }
         public Filepickr FilePickr { get; set; }
         public Ifttt Ifttt { get; set; }
-    }
-
-    public class DbConnection
-    {
-        public string Url { get; set; }
-        public string DatabaseName { get; set; }
-        public string CertFileName { get; set; }
-        public string CertPassword { get; set; }
-
-        public string FileName { get; set; }
     }
 
     public class Application
@@ -38,6 +30,8 @@
         public string FacebookId { get; set; }
         public bool IsDownForMaintenance { get; set; }
         public string ServiceWorker { get; set; }
+        public string PushNotificationsPublicKey { get; set; }
+        public string PushNotificationsPrivateKey { get; set; }
     }
 
     public class Logging
@@ -59,6 +53,7 @@
         public bool SendEmails { get; set; }
         public string SenderName { get; set; }
         public string SenderEmail { get; set; }
+        public int RetryFailedEmailTimeInMinutes { get; set; }
     }
 
     public class Cdn

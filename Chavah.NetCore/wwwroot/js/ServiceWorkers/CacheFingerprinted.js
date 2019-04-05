@@ -1,5 +1,38 @@
-﻿(function () {
+﻿self.addEventListener('push', function (event) {
+    var pushNotification = event.data.json(); // this will be a Models.PushNotification
+
+    event.waitUntil(
+        self.registration.showNotification(pushNotification.title || 'Chavah Messianic Radio', {
+            body: pushNotification.body,
+            icon: pushNotification.iconUrl || '/images/chavah120x120.png',
+            image: pushNotification.imageUrl, // The big image to show. In Chrome, this shows on the top of hte notification, unscaled and clipped to the window
+            data: pushNotification.clickUrl,
+            badge: '/images/chavah48x48.png',
+            //requireInteraction: true, Stays visible until the user dismisses. I feel this is a bad UX, so I've commented it out.
+            actions: [
+                {
+                    action: 'read',
+                    title: 'Read more...'
+                }
+            ]
+        })
+    );
+});
+
+self.onnotificationclick = function (event) {
+    var url = event && event.notification ? event.notification.data : "";
+    event.notification.close();
+
+    if (url) {
+        event.waitUntil(clients.openWindow(url));
+    }
+};
+
+(function () {
     'use strict';
+
+    // Cache Fingerprinted caches all resources that have a fingerprint (that is, a ?v=123" query string) on them.
+    // Fingerprinted resources will bypass the network and be served from the cache.
 
     // Update 'version' if you need to refresh the cache
     var version = "v1.0::CacheFingerprinted";
@@ -32,11 +65,11 @@
         }
     }
 
-    self.addEventListener('install', function (event: any) {
+    self.addEventListener('install', function (event) {
         event.waitUntil(updateStaticCache());
     });
 
-    self.addEventListener('activate', function (event: any) {
+    self.addEventListener('activate', function (event) {
         event.waitUntil(
             caches.keys()
                 .then(function (keys) {
@@ -53,7 +86,7 @@
         );
     });
 
-    self.addEventListener('fetch', function (event: any) {
+    self.addEventListener('fetch', function (event) {
         var request = event.request;
 
         // Always fetch non-GET requests from the network

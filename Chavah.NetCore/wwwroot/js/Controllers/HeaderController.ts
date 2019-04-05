@@ -3,12 +3,14 @@
         
         notifications: Server.Notification[];
         profilePicUrl: string | null = null;
+        canSubscribeToPushNotifications = false;
 
         static $inject = [
             "homeViewModel",
             "accountApi",
             "appNav",
             "pwaInstall",
+            "pushNotifications",
             "audioPlayer"
         ];
 
@@ -17,13 +19,14 @@
             private readonly accountApi: AccountService,
             private readonly appNav: AppNavService,
             private readonly pwaInstall: PwaInstallService,
+            private readonly pushNotifications: PushNotificationService,
             private readonly audioPlayer: AudioPlayerService) {
 
             this.accountApi.signedInState
                 .select(() => this.accountApi.currentUser)
                 .subscribe(user => this.signedInUserChanged(user));
         }
-
+        
         get isAdmin(): boolean {
             if (this.accountApi.currentUser === undefined || this.accountApi.currentUser === null) {
                 return false;
@@ -56,6 +59,15 @@
             return this.pwaInstall.canInstall;
         }
 
+        $onInit() {
+            this.loadPushNotificationState();
+        }
+
+        loadPushNotificationState() {
+            this.pushNotifications.canSubscribe()
+                .then(val => this.canSubscribeToPushNotifications = val);
+        }
+
         markNotificationsAsRead() {
             if (this.notifications.some(n => n.isUnread)) {
                 this.notifications.forEach(n => n.isUnread = false);
@@ -86,6 +98,18 @@
                     }
                 })
             }
+        }
+
+        async askPermissionForPushNotifications() {
+            const permissionResult = await this.pushNotifications.askPermission();
+            if (permissionResult === "granted") {
+                await this.pushNotifications.subscribe();
+                this.appNav.pushSubscriptionSuccessful();
+            } else {
+                console.log("Push notification permission wasn't granted", permissionResult);
+            }
+
+            this.loadPushNotificationState();
         }
     }
 
