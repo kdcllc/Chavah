@@ -22,6 +22,7 @@
         purchaseUri: string;
         reasonsPlayed: Server.SongPickReasons | null;
         albumColors: AlbumColors;
+        commentCount: number;
     }
 
     export interface AlbumColors {
@@ -74,12 +75,14 @@
         newHebrewName: string;
         newTags: string[];
         newLyrics: string;
+        newContributingArtists: string[];
         oldArtist: string;
         oldAlbum: string;
         oldLyrics: string;
         oldName: string;
         oldHebrewName: string;
         oldTags: string[];
+        oldContributingArtists: string[];
     }
 
     export interface AlbumUpload {
@@ -241,5 +244,20 @@
         createDate: string;
         endpoint: string;
         keys: { auth: string; p256dh: string; }
+    }
+
+    export interface CommentThread {
+        id: string;
+        songId: string;
+        comments: Comment[];
+    }
+
+    export interface Comment {
+        userId: string
+        userDisplayName: string;
+        content: string;
+        date: string;
+        flagCount: number;
+        lastFlagDate: string | null;
     }
 }

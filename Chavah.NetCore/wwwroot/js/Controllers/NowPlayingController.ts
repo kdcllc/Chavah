@@ -9,6 +9,10 @@
         currentSong: Song | null;
         recurringFetchHandle: number | null;
         disposed = new Rx.Subject<boolean>();
+        commentThread: Server.CommentThread | null = null;
+        isLoadingCommentThread = false;
+        newCommentText = "";
+        readonly canNativeShare = !!navigator["share"];
 
         static $inject = [
             "songApi",
@@ -17,21 +21,22 @@
             "homeViewModel",
             "appNav",
             "accountApi",
+            "commentThreadApi",
             "sharing",
             "$q"
         ];
 
         constructor(
-            private songApi: SongApiService,
-            private songBatch: SongBatchService,
-            private audioPlayer: AudioPlayerService,
-            private homeViewModel: Server.HomeViewModel,
-            private appNav: AppNavService,
-            private accountApi: AccountService,
-            private sharing: SharingService,
-            private $q: ng.IQService) {
-
-
+            private readonly songApi: SongApiService,
+            private readonly songBatch: SongBatchService,
+            private readonly audioPlayer: AudioPlayerService,
+            private readonly homeViewModel: Server.HomeViewModel,
+            private readonly appNav: AppNavService,
+            private readonly accountApi: AccountService,
+            private readonly commentThreadApi: CommentThreadService,
+            private readonly sharing: SharingService,
+            private readonly $q: ng.IQService) {
+            
             this.audioPlayer.song
                 .takeUntil(this.disposed)
                 .subscribeOnNext(song => this.nextSongBeginning(song));
@@ -105,6 +110,22 @@
             return "#";
         }
 
+        get commentsTitle(): string {
+            if (!this.currentSong || this.currentSong.commentCount === 0) {
+                return "Comments";
+            }
+
+            if (this.currentSong.commentCount === 1) {
+                return "1 comment";
+            }
+
+            return `${this.currentSong.commentCount} comments`;
+        }
+
+        get currentUserProfileUrl(): string {
+            return `/api/cdn/getuserprofile?userId=${this.accountApi.currentUser ? encodeURIComponent(this.accountApi.currentUser.id) : '' }`;            
+        }
+
         getEditSongUrl(): string {
             if (this.currentSong) {
                 if (this.accountApi.isSignedIn) {
@@ -115,6 +136,12 @@
             }
 
             return "#";
+        }
+
+        $onInit() {
+            if (this.currentSong) {
+                this.currentSong.areCommentsExpanded = false;
+            }
         }
 
         $onDestroy() {
@@ -167,6 +194,7 @@
                 }
 
                 this.currentSong = song;
+                this.commentThread = null;
             }
         }
 
@@ -230,22 +258,25 @@
 
         copyShareUrl() {
             // iOS share functionality.
-            let shareUrlInput = document.querySelector("#currentSongShareLink") as HTMLInputElement;
-            var isiOSDevice = navigator.userAgent.match(/ipad|iphone/i);
+            const shareUrlInput = document.querySelector("#currentSongShareLink") as HTMLInputElement;
+            const isiOSDevice = navigator.userAgent.match(/ipad|iphone/i);
 
-            // iOS has specific rules about copying text. https://stackoverflow.com/a/43001673/536
-            if (isiOSDevice) {
-
-                var editable = shareUrlInput.contentEditable;
-                var readOnly = shareUrlInput.readOnly;
+            // If we're a modern browser, we 
+            if (navigator["clipboard"]) {
+                navigator["clipboard"].writeText(shareUrlInput.value);
+            } else if (isiOSDevice) {
+                // Older versions of iOS have specific rules about copying text. https://stackoverflow.com/a/43001673/536
+            
+                const editable = shareUrlInput.contentEditable;
+                const readOnly = shareUrlInput.readOnly;
 
                 shareUrlInput.contentEditable = "true"; // yes, a string: "true", "false", "inheritable" https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/contentEditable
                 shareUrlInput.readOnly = false;
 
-                var range = document.createRange();
+                const range = document.createRange();
                 range.selectNodeContents(shareUrlInput);
 
-                var selection = window.getSelection();
+                const selection = window.getSelection();
                 selection.removeAllRanges();
                 selection.addRange(range);
 
@@ -254,16 +285,59 @@
                 shareUrlInput.readOnly = readOnly;
 
             } else {
-                // Not iOS? Just select the text box containing the URL to share.
+                // Old browsers.
                 shareUrlInput.select();
+                document.execCommand("copy");
             }
-            
-            document.execCommand("copy");
         }
 
         tryNativeShare() {
-            if (this.currentSong && this.currentSong.isShareExpanded) {
+            if (this.currentSong) {
                 this.sharing.nativeShareUrl(this.currentSong);
+            }
+        }
+
+        toggleCommentThread() {
+            if (this.currentSong) {
+                this.currentSong.areCommentsExpanded = !this.currentSong.areCommentsExpanded;
+
+                // Start loading the comments if need be.
+                if (!this.isLoadingCommentThread && !this.commentThread) {
+                    this.isLoadingCommentThread = true;
+                    this.commentThreadApi.get(`commentThreads/${this.currentSong.id}`)
+                        .then(results => this.commentThreadLoaded(results))
+                        .finally(() => this.isLoadingCommentThread = false);
+                }
+            }
+        }
+
+        addNewComment() {
+            if (this.newCommentText.length > 0 && this.commentThread && this.accountApi.currentUser && this.currentSong) {
+                const comment = {
+                    content: this.newCommentText,
+                    date: new Date().toISOString(),
+                    flagCount: 0,
+                    lastFlagDate: null,
+                    userDisplayName: this.accountApi.currentUser.displayName,
+                    userId: this.accountApi.currentUser.id
+                };
+                this.commentThread.comments.push(comment);
+                this.newCommentText = "";
+                const capturedCommentThread = this.commentThread;
+                this.commentThreadApi.addComment(comment.content, this.commentThread.songId)
+                    .then(result => {
+                        if (this.commentThread === capturedCommentThread) {
+                            this.commentThread = result;
+                        }
+                    });
+            }
+        }
+
+        private commentThreadLoaded(thread: Server.CommentThread) {
+            // Is the user still waiting for the comments to this song? Display the comment thread.
+            const isWaitingForComments = this.currentSong && this.currentSong.id.localeCompare(thread.songId, undefined, { sensitivity: 'base' }) === 0;
+            if (isWaitingForComments) {
+                this.commentThread = thread;
             }
         }
 

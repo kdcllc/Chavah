@@ -14,7 +14,7 @@
 
         getEmbedCode(id: string): string {
             // tslint:disable-next-line:max-line-length
-            return `<iframe style="border-top: medium none; height: 558px; border-right: medium none; width: 350px; border-bottom: medium none; border-left: medium none" src="${this.homeViewModel.defaultUrl}/home/embed?song=${id}" scrolling="none"></iframe>`;
+            return `<iframe loading="lazy" style="border-top: medium none; height: 558px; border-right: medium none; width: 350px; border-bottom: medium none; border-left: medium none" src="${this.homeViewModel.defaultUrl}/home/embed?song=${id}" scrolling="none"></iframe>`;
         }
 
         facebookShareUrl(song: Song): string {
@@ -74,18 +74,10 @@
          * @param song
          */
         nativeShareUrl(song: Song) {
-            var nativeShareActions = [
-                () => this.tryShareWeb(song),
-                () => this.tryShareOnWindows(song)
-            ];
-
-            // Invoke each native share action until one succeeds.
-            for (let i = 0; i < nativeShareActions.length; i++) {
-                var action = nativeShareActions[i];
-                var success = action();
-                if (success) {
-                    break;
-                }
+            if (navigator["share"]) {
+                this.tryShareWeb(song);
+            } else if (window["Windows"]) {
+                this.tryShareOnWindows(song);
             }
         }
 
@@ -104,23 +96,19 @@
                 share?: NavigatorShare;
             }
 
-            const navigatorDotShare = navigator["share"] as NavigatorShare | undefined;
-            if (navigatorDotShare) {
+            if (navigator["share"]) {
                 const songName = this.getSongName(song);
 
                 try {
-                    navigatorDotShare({
+                    navigator["share"]({
                         title: `${songName} by ${song.artist}`,
                         text: "via Chavah Messianic Radio",
                         url: `${this.homeViewModel.defaultUrl}/?song=${song.id}`
-                    });
-                    return true;
+                    }).catch(error => console.log("Native shared failed", error));
                 } catch (error) {
                     console.log("Unable to trigger navigator.share", error);
                 }
             }
-
-            return false;
         }
 
         private tryShareOnWindows(song: Song): boolean {
