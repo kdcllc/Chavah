@@ -56,9 +56,15 @@
 
   <ItemGroup>
 
+    <Content Remove="Options\**" />
+
     <Content Remove="Views\Partials\**" />
+
+    <Compile Remove="Options\**" />
     <Compile Remove="Views\Partials\**" />
+    <None Remove="Options\**" />
     <None Remove="Views\Partials\**" />
+    <EmbeddedResource Remove="Options\**" />
     <EmbeddedResource Remove="Views\Partials\**" />
 
     <Content Remove="wwwroot\js\Components\**" />
@@ -189,7 +195,6 @@
 
   <ItemGroup>
     <Folder Include="Common\Extensions\" />
-    <Folder Include="Options\" />
   </ItemGroup>
 
   <Target Name="PublishMinifiedDistributionFiles" AfterTargets="ComputeFilesToPublish">
