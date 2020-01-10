@@ -107,7 +107,7 @@ namespace BitShuva.Chavah.Controllers
         }
 
         [HttpGet]
-        public async Task<Uri> GetProfilePicForEmailAddress(string email)
+        public async Task<Uri?> GetProfilePicForEmailAddress(string email)
         {
             var user = await DbSession.LoadAsync<AppUser>(AppUser.AppUserPrefix + email);
             if (user != null)
@@ -139,6 +139,17 @@ namespace BitShuva.Chavah.Controllers
             user.LastName = updatedUser.LastName;
 
             return user;
+        }
+
+        [HttpGet]
+        [Authorize(Roles = AppUser.AdminRole)]
+        public Task<List<AppUser>> GetNewUsers(int skip = 0, int take = 20)
+        {
+            return DbSession.Query<AppUser>()
+                .OrderByDescending(u => u.RegistrationDate)
+                .Skip(skip)
+                .Take(take)
+                .ToListAsync();
         }
     }
 }
